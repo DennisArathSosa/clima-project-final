@@ -1,0 +1,131 @@
+version: "3.8"
+
+services:
+  # Base de datos PostgreSQL compartida
+  db:
+    image: postgres:15
+    container_name: clima_db
+    environment:
+      POSTGRES_DB: clima_db
+      POSTGRES_USER: clima_user
+      POSTGRES_PASSWORD: clima_pass
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./db-init/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - clima_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clima_user -d clima_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # API instancia 1
+  api1:
+    build: ./api
+    container_name: clima_api1
+    environment:
+      - INSTANCE_ID=API-1
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=clima_db
+      - DB_USER=clima_user
+      - DB_PASS=clima_pass
+      - PORT=5000
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - clima_net
+
+  # API instancia 2
+  api2:
+    build: ./api
+    container_name: clima_api2
+    environment:
+      - INSTANCE_ID=API-2
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=clima_db
+      - DB_USER=clima_user
+      - DB_PASS=clima_pass
+      - PORT=5000
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - clima_net
+
+  # API instancia 3
+  api3:
+    build: ./api
+    container_name: clima_api3
+    environment:
+      - INSTANCE_ID=API-3
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=clima_db
+      - DB_USER=clima_user
+      - DB_PASS=clima_pass
+      - PORT=5000
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - clima_net
+
+  # Nginx Load Balancer
+  nginx:
+    build: ./nginx
+    container_name: clima_nginx
+    ports:
+      - "8080:80"
+    depends_on:
+      - api1
+      - api2
+      - api3
+    networks:
+      - clima_net
+
+  # Simulador de sensores
+  sensor:
+    build: ./sensor
+    container_name: clima_sensor
+    environment:
+      - API_URL=http://nginx/temperatura
+      - INTERVAL_SECONDS=30
+    depends_on:
+      - nginx
+    networks:
+      - clima_net
+
+  # Jupyter Notebook
+  jupyter:
+    image: jupyter/scipy-notebook:latest
+    container_name: clima_jupyter
+    environment:
+      - JUPYTER_ENABLE_LAB=yes
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=clima_db
+      - DB_USER=clima_user
+      - DB_PASS=clima_pass
+    volumes:
+      - ./notebook:/home/jovyan/work
+    ports:
+      - "8888:8888"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - clima_net
+    command: start-notebook.sh --NotebookApp.token='' --NotebookApp.password=''
+
+networks:
+  clima_net:
+    driver: bridge
+
+volumes:
+  db_data:
